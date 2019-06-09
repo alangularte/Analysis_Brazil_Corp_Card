@@ -1,0 +1,161 @@
+---
+title: "Análise dos Gastos com Cartão Corporativo"
+author: "Alan Gularte"
+output:
+  html_document:
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Leitura e Limpeza
+
+```{r}
+library(dplyr)
+library(magrittr)
+library(lubridate)
+library(ggplot2)
+library(skimr)
+library(tidyr)
+library(highcharter)
+library(devtools)
+library(DT)
+require(scales)
+
+gastos <- readRDS('data/gastos_cartao.rds')
+
+# Converter data da transacao para o tipo date e para o formato YYYY-MM-DD para facilitar as operacoes
+gastos <- gastos %>% 
+  mutate(data_transacao = as.Date(data_transacao, format = '%d/%m/%Y'))
+
+gastos %>% 
+  skim()
+```
+
+# Hipótese 1: Uma visão geral dos gastos
+Como será que foi o uso do cartão corporativo de 2014 a 2018?
+
+```{r}
+gastos %>%
+  filter(ano_extrato != "2019") %>% 
+  group_by(ano_extrato) %>% 
+  summarise(media = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
+  hchart("line",
+         name = "Total de Despesas",
+         hcaes(x = ano_extrato, y = media),
+         color = "#cc8800"
+  )
+
+options(scipen=10000)
+
+gastos %>%
+  select(ano_extrato,valor_transacao) %>% 
+  filter(ano_extrato != "2019") %>% 
+  ggplot(aes(y = valor_transacao)) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = round(seq(min(gastos$valor_transacao), max(gastos$valor_transacao), by = 20000),1)) +
+  ylab("Valor Transação")
+
+gastos %>%
+  select(ano_extrato,valor_transacao) %>% 
+  filter(ano_extrato != "2019") %>% 
+  ggplot(aes(y = valor_transacao, x = factor(ano_extrato))) +
+  geom_boxplot() +
+  scale_y_continuous(breaks = round(seq(min(gastos$valor_transacao), max(gastos$valor_transacao), by = 20000),1)) +
+  xlab("Ano") +
+  ylab("Valor Transação")
+
+
+```
+
+# Hipótese 2: Órgãos com mais despesas
+Quais são os órgãos que possuíram mais despesas com o cartão corporativo?
+
+```{r}
+gastos %>%
+  group_by(nome_orgao_superior) %>% 
+  summarise(total = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
+  arrange(desc(total)) %>%
+  hchart(type = "treemap",
+         hcaes(x = nome_orgao_superior, value = total, color = total))
+```
+
+# Hipótese 3: Unidades Gestoras da Presidência com mais despesas
+Quais são as Unidades Gestoras da Presidência que foram responsáveis pelos maiores gastos?
+
+```{r}
+gastos %>%
+  filter(codigo_orgao_superior == "20000") %>% #cÃ³digo PresidÃªncia
+  group_by(nome_unidade_gestora) %>% 
+  summarise(total = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
+  arrange(desc(total)) %>%
+  #slice(1:10) %>% 
+  hchart(type = "treemap",
+         hcaes(x = nome_unidade_gestora, value = total, color = total))
+```
+
+# Hipótese 4: Distribuição dos gastos entre os órgãos
+
+```{r}
+gastos_top5 <- gastos %>% 
+  group_by(nome_orgao_superior) %>% 
+  summarise(total = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
+  arrange(desc(total)) %>% 
+  slice(1:5)
+
+gastos %>% 
+  filter(nome_orgao_superior == c(gastos_top5$nome_orgao_superior)) %>% 
+  droplevels() %>% 
+  ggplot(aes(x = ano_extrato, y = valor_transacao)) +
+  geom_point() +
+  geom_smooth(aes(colour = nome_orgao_superior, fill = nome_orgao_superior)) +
+  facet_wrap(~nome_orgao_superior) +
+  theme_bw()
+```
+
+# Hipótese 5: Tipos de Transações
+Quais são os tipos de transações presentes e seus gastos?
+
+```{r}
+gastos %>% 
+  droplevels() %>% 
+  ggplot(aes(x = ano_extrato, y = valor_transacao)) +
+  geom_point() +
+  geom_smooth(aes(colour = transacao, fill = transacao)) +
+  facet_wrap(~transacao) +
+  theme_bw()
+```
+
+# Hipótese 6: Transações Sigilosas
+Quais são os órgãos que apresentam mais transações sigilosas?
+
+```{r}
+
+gastos_table <- gastos %>%
+  filter(transacao == "Informacoes protegidas por sigilo") %>% 
+  group_by(nome_orgao_superior) %>%
+  summarise(n=n(), total=sum(valor_transacao,na.rm = T),media=median(valor_transacao,na.rm = T)) %>%
+  arrange(desc(n))
+
+gastos_table %>% 
+  datatable(colnames = c('Órgão','Total de Transações', 'Valor Acumulado (R$)', 'Média das Despesas (R$)'))
+
+```
+
+# Considerações Finais
+
+  + Entre 2014 e 2018 houve um decréscimo nos gastos com o cartão corporativo.
+  + Existem gastos com valores muito acima da média. Considerando todo o período, a média dos gastos foi de R$ 370.27, porém encontrou-se despesas com valores acima de R$ 100.000,00.
+  + O órgão da Presidência é o que apresenta as maiores despesas, sendo que a sua maioria é de transações sigilosas (nenhuma identificação de origem, destino ou data disponíveis).
+  + A Agência Brasileira de Inteligência é responsável pelas maiores despesas da Presidência (acumulado de R$ 38M), seguida pela Secretaria de Administração/PR (acumulado de R$ 30M).
+  + As transações sigilosas são as responsáveis pelas despesas mais caras, e estão presentes, na sua maioria (em números), no Ministério da Justiça e Segurança Pública, Presidência da República, Ministério da Economia e Ministério da Defesa.
+
+  Nota: dentro do período pesquisado, o ano de 2014 foi o de maior gasto. Este foi um ano eleitoral, onde a presidente em exerício estava se candidatando a reeleição. Será que esses gastos foram destinados às suas campanhas, utilizando dinheiro público? Infelizmente o dataset carece de outras variáveis importantes, como o tipo de item envolvido nas despesas, para poder ter essa confirmação ou obter outras pistas.
