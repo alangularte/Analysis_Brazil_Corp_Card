@@ -34,31 +34,39 @@ gastos <- readRDS('data/gastos_cartao.rds')
 
 # Converter data da transacao para o tipo date e para o formato YYYY-MM-DD para facilitar as operacoes
 gastos <- gastos %>% 
-  mutate(data_transacao = as.Date(data_transacao, format = '%d/%m/%Y'))
-
+  mutate(
+    data_transacao = as.Date(data_transacao, format = '%d/%m/%Y'),
+    dia_transacao = as.numeric(format(data_transacao, format = "%d")),
+    mes_transacao = as.numeric(format(data_transacao, format = "%m")),
+    ano_transacao = as.numeric(format(data_transacao, format = "%Y")),
+    periodo_transacao = as.Date(paste(ano_transacao,mes_transacao,"1",sep="-"), format = '%Y-%m-%d')
+  )
+    
 gastos %>% 
   skim()
 ```
 
 # Hipótese 1: Uma visão geral dos gastos
-Como será que foi o uso do cartão corporativo de 2014 a 2018?
+Como será que foi o uso do cartão corporativo de 2014 a 2019?
 
 ```{r}
 gastos %>%
-  filter(ano_extrato != "2019") %>% 
-  group_by(ano_extrato) %>% 
-  summarise(media = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
+  filter(!is.na(periodo_transacao)) %>% 
+  group_by(periodo_transacao) %>% 
+  summarise(total = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
   hchart("line",
          name = "Total de Despesas",
-         hcaes(x = ano_extrato, y = media),
+         hcaes(x = periodo_transacao, y = total),
          color = "#cc8800"
   )
 
 options(scipen=10000)
 
+dates = seq(as.Date("01-01-2007",  format = "%d-%m-%Y"), length.out = 120, by = "month")
+df <- data.frame(dates)  
+
 gastos %>%
   select(ano_extrato,valor_transacao) %>% 
-  filter(ano_extrato != "2019") %>% 
   ggplot(aes(y = valor_transacao)) +
   geom_boxplot() +
   scale_y_continuous(breaks = round(seq(min(gastos$valor_transacao), max(gastos$valor_transacao), by = 20000),1)) +
@@ -66,7 +74,6 @@ gastos %>%
 
 gastos %>%
   select(ano_extrato,valor_transacao) %>% 
-  filter(ano_extrato != "2019") %>% 
   ggplot(aes(y = valor_transacao, x = factor(ano_extrato))) +
   geom_boxplot() +
   scale_y_continuous(breaks = round(seq(min(gastos$valor_transacao), max(gastos$valor_transacao), by = 20000),1)) +
@@ -77,7 +84,7 @@ gastos %>%
 ```
 
 # Hipótese 2: Órgãos com mais despesas
-Quais são os órgãos que possuíram mais despesas com o cartão corporativo?
+Quais são os órgãos que mais apresentaram gastos (em valores acumulados) no período pesquisado?
 
 ```{r}
 gastos %>%
@@ -93,7 +100,7 @@ Quais são as Unidades Gestoras da Presidência que foram responsáveis pelos ma
 
 ```{r}
 gastos %>%
-  filter(codigo_orgao_superior == "20000") %>% #cÃ³digo PresidÃªncia
+  filter(codigo_orgao_superior == "20000") %>% #código da presidência
   group_by(nome_unidade_gestora) %>% 
   summarise(total = round(sum(valor_transacao, na.rm = TRUE),3)) %>%
   arrange(desc(total)) %>%
@@ -122,7 +129,7 @@ gastos %>%
 ```
 
 # Hipótese 5: Tipos de Transações
-Quais são os tipos de transações presentes e seus gastos?
+Quais são os tipos de transações presentes e seus respectivos gastos?
 
 ```{r}
 gastos %>% 
@@ -152,10 +159,10 @@ gastos_table %>%
 
 # Considerações Finais
 
-  + Entre 2014 e 2018 houve um decréscimo nos gastos com o cartão corporativo.
+  + O uso do cartão corporativo é realizado de forma sazonal, onde Novembro é o mês de maior utiização e Janeiro de menor utilização, talvez este último por ser o mês de recesso.
   + Existem gastos com valores muito acima da média. Considerando todo o período, a média dos gastos foi de R$ 370.27, porém encontrou-se despesas com valores acima de R$ 100.000,00.
-  + O órgão da Presidência é o que apresenta as maiores despesas, sendo que a sua maioria é de transações sigilosas (nenhuma identificação de origem, destino ou data disponíveis).
+  + A Presidência apresenta as maiores despesas, sendo que a sua maioria é de transações sigilosas (nenhuma identificação de origem, destino ou data disponíveis).
   + A Agência Brasileira de Inteligência é responsável pelas maiores despesas da Presidência (acumulado de R$ 38M), seguida pela Secretaria de Administração/PR (acumulado de R$ 30M).
-  + As transações sigilosas são as responsáveis pelas despesas mais caras, e estão presentes, na sua maioria (em números), no Ministério da Justiça e Segurança Pública, Presidência da República, Ministério da Economia e Ministério da Defesa.
+  + As transações sigilosas são as responponsáveis pelas despesas mais caras, e estão presentes, em sua maioria (em quantidade), no Ministério da Justiça e Segurança Pública, Presidência da República, Ministério da Economia e Ministério da Defesa.
 
-  Nota: dentro do período pesquisado, o ano de 2014 foi o de maior gasto. Este foi um ano eleitoral, onde a presidente em exerício estava se candidatando a reeleição. Será que esses gastos foram destinados às suas campanhas, utilizando dinheiro público? Infelizmente o dataset carece de outras variáveis importantes, como o tipo de item envolvido nas despesas, para poder ter essa confirmação ou obter outras pistas.
+  Nota: dentro do período pesquisado, o ano de 2014 foi o de maior gasto. Este foi um ano eleitoral e também o ano em que o Brasil hospedou a Copa do Mundo de Futebol. Será que usou-se muito o cartão corporativo com gastos com a Copa? O cartão corporativo também foi utilizado para fins de campanha? Infelizmente o dataset carece de outras variáveis importantes, como o tipo de item (produto/serviço) envolvido nas despesas, para poder ter uma análise mais profunda.
